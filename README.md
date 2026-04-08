@@ -8,6 +8,9 @@
 
 ## Summary
 
+<img width="2860" height="1238" alt="image" src="https://github.com/user-attachments/assets/cabd916d-dcc7-4f2d-83d9-059cfae15fb1" />
+
+
 A command injection vulnerability exists in the release workflow due to unsafe interpolation of user-controlled input inside a shell execution block.
 
 The GitHub Actions expression `${{ inputs.releaseVersion }}` is evaluated at **workflow template time**, not at runtime. As a result, shell quoting does **not** prevent injection.
